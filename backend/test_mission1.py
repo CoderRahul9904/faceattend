@@ -41,7 +41,10 @@ def teardown_module(module):
     engine.dispose()
     # Delete test db file if exists
     if os.path.exists("test_faceattend.db"):
-        os.remove("test_faceattend.db")
+        try:
+            os.remove("test_faceattend.db")
+        except Exception:
+            pass
 
 def test_register_teacher_success():
     payload = {

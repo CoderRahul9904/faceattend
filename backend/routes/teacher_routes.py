@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, date as date_type
 from typing import Optional
@@ -178,3 +178,91 @@ def list_sessions(
             )
         )
     return response_list
+
+# Live Scan Endpoint
+
+@router.post("/sessions/{session_id}/scan")
+async def scan_session_frame(
+    session_id: int,
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(auth.require_role(["teacher"])),
+    db: Session = Depends(get_db)
+):
+    # Verify session exists
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+        
+    # Verify owner
+    if session.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the teacher who owns the session can trigger a scan"
+        )
+        
+    # Verify session status is active
+    if session.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session is not active"
+        )
+        
+    # Read the image frame bytes
+    try:
+        frame_bytes = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not read frame: {str(e)}"
+        )
+        
+    # Load all face encodings
+    known_encodings = face_utils.load_all_encodings(db)
+    
+    # Find matches
+    matches = face_utils.find_matches(frame_bytes, known_encodings)
+    matches_dict = {user_id: confidence for user_id, confidence in matches}
+    
+    # Determine scan number (scan_number = last_scan_number + 1)
+    last_scan = db.query(models.Scan).filter(
+        models.Scan.session_id == session_id
+    ).order_by(models.Scan.scan_number.desc()).first()
+    scan_number = (last_scan.scan_number + 1) if last_scan else 1
+    
+    # Create Scan record
+    new_scan = models.Scan(
+        session_id=session_id,
+        scan_number=scan_number,
+        scanned_at=datetime.now(timezone.utc)
+    )
+    db.add(new_scan)
+    db.flush()  # Populates new_scan.id
+    
+    # Create ScanResult records for every registered student
+    students = db.query(models.User).filter(models.User.role == "student").all()
+    results_list = []
+    
+    for student in students:
+        detected = student.id in matches_dict
+        confidence = matches_dict[student.id] if detected else 0.0
+        
+        scan_result = models.ScanResult(
+            scan_id=new_scan.id,
+            student_id=student.id,
+            detected=detected,
+            confidence=confidence
+        )
+        db.add(scan_result)
+        
+        results_list.append({
+            "student_id": student.student_id,
+            "student_name": student.name,
+            "detected": detected,
+            "confidence": confidence
+        })
+        
+    db.commit()
+    return results_list
