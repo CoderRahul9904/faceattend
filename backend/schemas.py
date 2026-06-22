@@ -14,6 +14,7 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     created_at: datetime
+    face_registered: Optional[bool] = None
 
     class Config:
         from_attributes = True

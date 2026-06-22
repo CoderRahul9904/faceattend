@@ -11,3 +11,7 @@ python-dotenv
 email-validator
 cmake
 face_recognition
+psycopg2-binary
+insightface
+onnxruntime
+opencv-python

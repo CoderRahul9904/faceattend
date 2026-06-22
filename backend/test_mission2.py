@@ -103,15 +103,18 @@ def test_face_registration_flow():
     assert status_resp2.status_code == 200
     assert status_resp2.json() == {"registered": True}
     
-    # 5. Verify the pickle file is created in directory
-    expected_pkl = os.path.join(TEST_FACE_DATA_DIR, "STU100.pkl")
-    assert os.path.exists(expected_pkl)
-    
-    # Check that pickle file contains a 128-dimensional array
-    with open(expected_pkl, "rb") as f:
-        encoding = pickle.load(f)
+    # 5. Verify the encoding is created in the database
+    import models
+    db = TestingSessionLocal()
+    try:
+        db_enc = db.query(models.FaceEncoding).join(models.User).filter(models.User.student_id == "STU100").first()
+        assert db_enc is not None
+        assert db_enc.encoding_data is not None
+        encoding = pickle.loads(db_enc.encoding_data)
         assert isinstance(encoding, face_utils.np.ndarray)
         assert encoding.shape == (128,)
+    finally:
+        db.close()
 
 def test_face_registration_invalid_file_count():
     login_payload = {

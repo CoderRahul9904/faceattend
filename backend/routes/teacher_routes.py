@@ -59,7 +59,10 @@ def list_students(
     current_user: models.User = Depends(auth.require_role(["teacher"])),
     db: Session = Depends(get_db)
 ):
-    return db.query(models.User).filter(models.User.role == "student").all()
+    students = db.query(models.User).filter(models.User.role == "student").all()
+    for s in students:
+        s.face_registered = db.query(models.FaceEncoding).filter(models.FaceEncoding.user_id == s.id).first() is not None
+    return students
 
 # Session Routes
 

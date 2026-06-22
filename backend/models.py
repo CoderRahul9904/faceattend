@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Date, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -25,7 +25,8 @@ class FaceEncoding(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    encoding_path = Column(String, nullable=False)
+    encoding_path = Column(String, nullable=True)
+    encoding_data = Column(LargeBinary, nullable=True)
     photo_count = Column(Integer, default=5, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

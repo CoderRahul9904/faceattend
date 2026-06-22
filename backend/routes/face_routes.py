@@ -35,26 +35,8 @@ async def upload_face_photos(
             detail=str(e)
         )
         
-    # Save the pickle file using student_id as the filename identifier
-    file_path = face_utils.save_encoding(current_user.student_id, avg_encoding)
-    
-    # Check if encoding already exists for this student
-    existing_encoding = db.query(models.FaceEncoding).filter(models.FaceEncoding.user_id == current_user.id).first()
-    
-    if existing_encoding:
-        existing_encoding.encoding_path = file_path
-        existing_encoding.photo_count = len(files)
-        existing_encoding.created_at = datetime.now(timezone.utc)
-    else:
-        new_encoding = models.FaceEncoding(
-            user_id=current_user.id,
-            encoding_path=file_path,
-            photo_count=len(files),
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(new_encoding)
-        
-    db.commit()
+    # Save the encoding directly in the database as a binary blob
+    face_utils.save_encoding(db, current_user.id, avg_encoding, len(files))
     
     return {"status": "success", "message": "Face registration successful"}
 

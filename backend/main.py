@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
 from routes import auth_routes, face_routes, teacher_routes, student_routes
 
-# Initialize DB tables
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="FaceAttend API", version="1.0")
+
+@app.on_event("startup")
+def startup_event():
+    Base.metadata.create_all(bind=engine)
+
 
 # CORS middleware configuration
 origins = [
