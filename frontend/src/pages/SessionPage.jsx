@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import client from '../api/client';
+import { useToast } from '../context/ToastContext';
 import CameraFeed from '../components/CameraFeed';
 import {
   Clock,
@@ -13,12 +14,14 @@ import {
   CheckCircle,
   HelpCircle,
   XCircle,
-  UserCheck
+  UserCheck,
+  Loader2
 } from 'lucide-react';
 
 const SessionPage = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
+  const { addToast } = useToast();
 
   // Refs
   const cameraRef = useRef(null);
@@ -148,11 +151,12 @@ const SessionPage = () => {
       setScanResults(newResults);
       setScanCount(prev => prev + 1);
       setLastScanTime(new Date());
+      addToast(`Scan #${scanCount + 1} completed successfully!`, 'success');
     } catch (err) {
       console.error('Scan error:', err);
-      setScanError(err.response?.data?.detail || 'Scan processing failed. Retrying on next interval...');
-      // We do NOT stop the interval because a temporary network glitch or missing face 
-      // in one frame should not crash the lecture attendance flow.
+      const errMsg = err.response?.data?.detail || 'Scan processing failed. Retrying on next interval...';
+      setScanError(errMsg);
+      addToast(errMsg, 'error');
     }
   };
 
@@ -161,6 +165,8 @@ const SessionPage = () => {
     if (isScanning) return;
     setIsScanning(true);
     setScanError('');
+    
+    addToast('Live scanning activated.', 'info');
     
     // Trigger first scan immediately
     triggerScan();
@@ -179,12 +185,20 @@ const SessionPage = () => {
       scanIntervalRef.current = null;
     }
     setIsScanning(false);
+    addToast('Live scanning paused.', 'info');
   };
 
   // Stop Session API handler
   const handleStopSession = async () => {
+    if (stoppingSession) return; // Prevent double submit
     setStoppingSession(true);
-    stopScanning(); // make sure scanner is stopped
+    
+    // Make sure scanner is stopped
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    setIsScanning(false);
 
     try {
       await client.post('/sessions/stop', {
@@ -194,12 +208,12 @@ const SessionPage = () => {
       // Close confirmation dialog
       setShowStopConfirm(false);
       
-      // Redirect with alert or custom message
-      alert('Session stopped successfully. Final attendance has been computed!');
+      addToast('Session ended successfully. Final attendance has been computed!', 'success');
       navigate('/teacher/dashboard');
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to stop session properly.');
+      const errMsg = err.response?.data?.detail || 'Failed to stop session properly.';
+      addToast(errMsg, 'error');
       setStoppingSession(false);
     }
   };
@@ -324,10 +338,11 @@ const SessionPage = () => {
 
             {/* Action buttons */}
             <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              {!isScanning ? (
+               {!isScanning ? (
                 <button
                   onClick={startScanning}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2.5 px-5 bg-[#3B5BDB] hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+                  disabled={stoppingSession}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2.5 px-5 bg-[#3B5BDB] hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50"
                 >
                   <Play className="h-4 w-4 fill-current" />
                   Start Scanning
@@ -335,7 +350,8 @@ const SessionPage = () => {
               ) : (
                 <button
                   onClick={stopScanning}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2.5 px-5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+                  disabled={stoppingSession}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2.5 px-5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50"
                 >
                   <Square className="h-4 w-4 fill-current" />
                   Pause Scanning
@@ -344,9 +360,14 @@ const SessionPage = () => {
               
               <button
                 onClick={() => setShowStopConfirm(true)}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2.5 px-5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+                disabled={stoppingSession}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 py-2.5 px-5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50"
               >
-                <XCircle className="h-4 w-4" />
+                {stoppingSession ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
                 End Session
               </button>
             </div>
@@ -374,6 +395,17 @@ const SessionPage = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto mt-4 space-y-3 pr-1">
+            {students.length > 0 && students.every(s => !s.face_registered) && (
+              <div className="flex items-start gap-2.5 p-3 bg-red-50 border border-red-100 text-red-800 rounded-xl text-xs">
+                <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
+                <div>
+                  <p className="font-bold">No Registered Faces Found</p>
+                  <p className="text-[10px] text-red-600 mt-0.5 leading-relaxed">
+                    No students have registered face profiles yet. Scanning will not detect anyone, making it pointless.
+                  </p>
+                </div>
+              </div>
+            )}
             {students.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-xs">
                 No students registered in database.

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import client from '../api/client';
 import { KeyRound, Mail, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 const Login = () => {
   const { login } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
@@ -17,6 +19,7 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return; // Prevent double submit
     setError('');
     setLoading(true);
 
@@ -35,6 +38,8 @@ const Login = () => {
         role,
       });
 
+      addToast(`Logged in successfully! Welcome back, ${name}.`, 'success');
+
       // Redirect based on role and face status
       if (role === 'teacher') {
         navigate('/teacher/dashboard');
@@ -49,11 +54,12 @@ const Login = () => {
       }
     } catch (err) {
       console.error(err);
+      let errMsg = 'Login failed. Please check your credentials and try again.';
       if (err.response && err.response.data && err.response.data.detail) {
-        setError(err.response.data.detail);
-      } else {
-        setError('Login failed. Please check your credentials and try again.');
+        errMsg = err.response.data.detail;
       }
+      setError(errMsg);
+      addToast(errMsg, 'error');
     } finally {
       setLoading(false);
     }

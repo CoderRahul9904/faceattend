@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import client from '../api/client';
 import { Camera, Upload, AlertCircle, CheckCircle, RefreshCw, ArrowRight, Loader2, CameraOff } from 'lucide-react';
 
 const FaceRegistration = () => {
   const { user, setFaceRegistered } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
 
   const [activeSlot, setActiveSlot] = useState(0);
@@ -126,12 +128,14 @@ const FaceRegistration = () => {
 
   // Submit all 5 images to backend
   const handleSubmit = async () => {
+    if (submitLoading) return; // Prevent double submit
     setSubmitError('');
     setSubmitLoading(true);
 
     const isAllFilled = slots.every((slot) => slot !== null);
     if (!isAllFilled) {
       setSubmitError('All 5 slots must be filled before submitting.');
+      addToast('All 5 slots must be filled before submitting.', 'warning');
       setSubmitLoading(false);
       return;
     }
@@ -156,15 +160,18 @@ const FaceRegistration = () => {
       // Stop camera tracks before redirect
       stopCamera();
 
+      addToast('Face profile registered and activated successfully!', 'success');
+
       // Redirect to student dashboard
       navigate('/student/dashboard');
     } catch (err) {
       console.error(err);
+      let errMsg = 'Failed to upload face photos. Please ensure your face is clearly visible and try again.';
       if (err.response && err.response.data && err.response.data.detail) {
-        setSubmitError(err.response.data.detail);
-      } else {
-        setSubmitError('Failed to upload face photos. Please ensure your face is clearly visible and try again.');
+        errMsg = err.response.data.detail;
       }
+      setSubmitError(errMsg);
+      addToast(errMsg, 'error');
     } finally {
       setSubmitLoading(false);
     }

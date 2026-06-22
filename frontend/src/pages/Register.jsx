@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import client from '../api/client';
 import { User, Mail, KeyRound, BadgeCheck, AlertCircle, Loader2 } from 'lucide-react';
 
 const Register = () => {
   const { login } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -20,6 +22,7 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return; // Prevent double submit
     setError('');
     setSuccess('');
     setLoading(true);
@@ -34,6 +37,8 @@ const Register = () => {
       };
 
       await client.post('/auth/register', registrationPayload);
+
+      addToast('Account created successfully!', 'success');
 
       if (role === 'teacher') {
         setSuccess('Registration successful! Redirecting to login...');
@@ -56,16 +61,19 @@ const Register = () => {
           role: userRole,
         });
 
+        addToast('Automatically logged in. Please register your face profile to complete onboarding.', 'info');
+
         // Redirect directly to the mandatory face registration flow
         navigate('/register-face');
       }
     } catch (err) {
       console.error(err);
+      let errMsg = 'Registration failed. Please review your details and try again.';
       if (err.response && err.response.data && err.response.data.detail) {
-        setError(err.response.data.detail);
-      } else {
-        setError('Registration failed. Please review your details and try again.');
+        errMsg = err.response.data.detail;
       }
+      setError(errMsg);
+      addToast(errMsg, 'error');
     } finally {
       setLoading(false);
     }

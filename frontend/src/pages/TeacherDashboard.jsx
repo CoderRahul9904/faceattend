@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import client from '../api/client';
 import {
   BookOpen,
@@ -14,11 +15,13 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
-  Database
+  Database,
+  Loader2
 } from 'lucide-react';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
 
   // State
@@ -27,6 +30,7 @@ const TeacherDashboard = () => {
   const [pastSessions, setPastSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exportingSessionId, setExportingSessionId] = useState(null);
   
   // Subject Creation Form
   const [subjectName, setSubjectName] = useState('');
@@ -56,11 +60,13 @@ const TeacherDashboard = () => {
       setPastSessions(sessionsRes.data);
     } catch (err) {
       console.error(err);
-      setError('Failed to fetch dashboard data. Please try again.');
+      const errMsg = 'Failed to fetch dashboard data. Please try again.';
+      setError(errMsg);
+      addToast(errMsg, 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -69,6 +75,7 @@ const TeacherDashboard = () => {
   // Create Subject Handler
   const handleCreateSubject = async (e) => {
     e.preventDefault();
+    if (creatingSubject) return; // Prevent double submit
     if (!subjectName.trim() || !subjectCode.trim()) {
       setCreateError('Please fill in all fields.');
       return;
@@ -88,12 +95,15 @@ const TeacherDashboard = () => {
       setSubjectName('');
       setSubjectCode('');
       setCreateSuccess('Subject created successfully!');
+      addToast(`Subject "${response.data.name}" created successfully!`, 'success');
       
       // Clear success message after 3 seconds
       setTimeout(() => setCreateSuccess(''), 3000);
     } catch (err) {
       console.error(err);
-      setCreateError(err.response?.data?.detail || 'Failed to create subject.');
+      const errMsg = err.response?.data?.detail || 'Failed to create subject.';
+      setCreateError(errMsg);
+      addToast(errMsg, 'error');
     } finally {
       setCreatingSubject(false);
     }
@@ -101,7 +111,7 @@ const TeacherDashboard = () => {
 
   // Start Session Handler
   const handleStartSession = async () => {
-    if (!selectedSubject) return;
+    if (!selectedSubject || startingSession) return;
     setStartingSession(true);
     setError('');
 
@@ -112,13 +122,16 @@ const TeacherDashboard = () => {
       });
       
       const sessionId = response.data.session_id;
+      addToast(`Lecture session for "${selectedSubject.name}" started!`, 'success');
       // Close modal
       setSelectedSubject(null);
       // Navigate to live session
       navigate(`/teacher/session/${sessionId}`);
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.detail || 'Failed to start session.');
+      const errMsg = err.response?.data?.detail || 'Failed to start session.';
+      setError(errMsg);
+      addToast(errMsg, 'error');
     } finally {
       setStartingSession(false);
     }
@@ -126,6 +139,9 @@ const TeacherDashboard = () => {
 
   // Export Excel Blob Download
   const handleExportExcel = async (sessionId, subjectName, date) => {
+    if (exportingSessionId) return; // Prevent double submit
+    setExportingSessionId(sessionId);
+
     try {
       const response = await client.get(`/attendance/export/${sessionId}`, {
         responseType: 'blob'
@@ -145,9 +161,14 @@ const TeacherDashboard = () => {
       // Cleanup
       link.remove();
       window.URL.revokeObjectURL(url);
+      
+      addToast(`Excel report downloaded successfully for ${subjectName}!`, 'success');
     } catch (err) {
       console.error(err);
-      alert('Failed to download Excel report. Please make sure the session is stopped.');
+      const errMsg = 'Failed to download Excel report. Please make sure the session is stopped.';
+      addToast(errMsg, 'error');
+    } finally {
+      setExportingSessionId(null);
     }
   };
 
@@ -439,9 +460,14 @@ const TeacherDashboard = () => {
                       ) : (
                         <button
                           onClick={() => handleExportExcel(session.id, session.subject_name, session.date)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-white hover:bg-[#3B5BDB] hover:text-white border border-gray-200 hover:border-transparent rounded-lg transition-all shadow-sm"
+                          disabled={exportingSessionId !== null}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-white hover:bg-[#3B5BDB] hover:text-white border border-gray-200 hover:border-transparent rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Download className="h-3.5 w-3.5" />
+                          {exportingSessionId === session.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-current" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" />
+                          )}
                           Excel Report
                         </button>
                       )}
