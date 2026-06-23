@@ -1,3 +1,6 @@
 .env
 PRIORITY.md
 test_photos
+backend/.env
+backend/face_data/
+face_data/
